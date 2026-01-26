@@ -38,12 +38,10 @@ env/
 *~
 .DS_Store
 
+
+
 # Data Files (Large datasets should not be committed)
-data/*/demos/*/cropped_img/
-data/*/demos/*/pose_data/
-data/*/dataset_plan.pkl
-data/*/*.zarr/
-data/*/*.zarr.zip
+data/*/
 *.zarr/
 *.zarr.zip
 
