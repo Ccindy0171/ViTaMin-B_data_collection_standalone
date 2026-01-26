@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data Files (Large datasets should not be committed)
+data/*/demos/*/cropped_img/
+data/*/demos/*/pose_data/
+data/*/dataset_plan.pkl
+data/*/*.zarr/
+data/*/*.zarr.zip
+*.zarr/
+*.zarr.zip
+
+# Logs and temporary files
+*.log
+/tmp/
+*.tmp
+*.bak
+
+# Test outputs
+test_output/
+test_results/
+
+# Calibration results (if generated dynamically)
+# Uncomment if you want to ignore calibration outputs
+# assets/cali_width_result/*
+# assets/intri_result/*
+# assets/tf_cali_result/*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Documentation build outputs
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Profiling
+*.prof
+*.lprof

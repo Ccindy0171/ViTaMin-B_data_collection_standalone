@@ -1,0 +1,38 @@
+# Core dependencies for ViTaMIn-B Data Collection Pipeline
+# Python 3.10+ recommended
+
+# Data processing and numerical computation
+numpy>=1.24.4
+scipy>=1.11.4
+pandas>=2.1.0
+scikit-image>=0.24.0
+
+# Computer vision
+opencv-python>=4.7.0
+imagecodecs>=2023.9.18
+
+# Video processing
+av>=14.4.0
+
+# Configuration management
+omegaconf
+hydra-core>=1.2.0
+pyyaml>=6.0.2
+
+# Data storage and compression
+zarr==2.16.0
+numcodecs==0.11.0
+
+# Pose and transformation utilities
+transforms3d
+pyquaternion>=0.9.9
+
+# Serial communication (for robot control)
+pyserial>=3.5
+
+# CLI and progress bars
+click>=8.1.8
+tqdm>=4.65.0
+
+# Utilities
+pillow>=11.0.0
