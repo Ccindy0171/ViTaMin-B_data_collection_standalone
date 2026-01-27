@@ -1,3 +1,24 @@
+"""
+Generate final zarr replay buffer for training.
+生成用于训练的最终zarr replay buffer
+
+This is the final script in the pipeline that combines all processed data
+into a compressed zarr archive ready for model training. It:
+这是管道中的最终脚本,将所有处理后的数据组合成压缩的zarr归档以供模型训练。它:
+
+1. Loads dataset_plan.pkl with synchronized data / 加载带同步数据的dataset_plan.pkl
+2. Processes and compresses images (visual + tactile) / 处理和压缩图像(视觉+触觉)
+3. Applies optional image processing / 应用可选的图像处理:
+   - ArUco marker inpainting / ArUco标记修复
+   - Fisheye masking / 鱼眼遮罩
+4. Packages tactile point clouds (if enabled) / 打包触觉点云(如果启用)
+5. Transforms Quest poses to end-effector poses / 将Quest姿态转换为末端执行器姿态
+6. Saves as compressed zarr.zip (~70MB for 5 demos) / 保存为压缩的zarr.zip(5个demos约70MB)
+
+The output format is compatible with diffusion_policy and other training
+frameworks that use zarr replay buffers.
+输出格式与diffusion_policy和其他使用zarr replay buffer的训练框架兼容
+"""
 import sys
 import os
 import argparse
@@ -5,7 +26,7 @@ from pathlib import Path
 import re
 import csv
 
-# Get project root (VB-vla/)
+# Get project root (VB-vla/) / 获取项目根目录
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent  # VB-vla/
 DATA_DIR = PROJECT_ROOT / "data"
@@ -32,7 +53,24 @@ from utils.replay_buffer import ReplayBuffer
 from utils.imagecodecs_numcodecs import register_codecs, JpegXl
 register_codecs()
 
+
 def load_tactile_points(demo_dir, usage_name, total_frames):
+    """
+    Load tactile point cloud data for a camera.
+    加载相机的触觉点云数据
+    
+    Args:
+        demo_dir: Path to demo directory / demo目录路径
+        usage_name: Camera usage name (e.g., 'left_hand_left_tactile') / 相机用途名称
+        total_frames: Expected number of frames for validation / 用于验证的预期帧数
+    
+    Returns:
+        NumPy array of point clouds, one per frame / 每帧一个点云的NumPy数组
+    
+    Raises:
+        FileNotFoundError: If points file doesn't exist / 如果点云文件不存在
+        ValueError: If frame count mismatch / 如果帧数不匹配
+    """
     tactile_points_dir = demo_dir / 'tactile_points'
     points_file = tactile_points_dir / f'{usage_name}_points.npy'
     
@@ -48,6 +86,48 @@ def load_tactile_points(demo_dir, usage_name, total_frames):
     return points_data
 
 def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], tactile_out_res: Union[tuple, list], compression_level: int, num_workers: int, use_mask: bool, use_inpaint_tag: bool, use_tactile_img: bool, use_tactile_pc: bool, tag_scale: float, use_ee_pose: bool, tx_quest_2_ee_left_path: str, tx_quest_2_ee_right_path: str, fps_num_points: int, fisheye_mask_params: dict = None):
+    """
+    Main function to generate replay buffer from dataset plan.
+    主函数,从数据集计划生成replay buffer
+    
+    Args:
+        input_path: List of input directories containing dataset_plan.pkl / 包含dataset_plan.pkl的输入目录列表
+        output_path: Output zarr.zip file path / 输出zarr.zip文件路径
+        visual_out_res: Output resolution for visual images (W, H) / 视觉图像输出分辨率(W, H)
+        tactile_out_res: Output resolution for tactile images (W, H) / 触觉图像输出分辨率(W, H)
+        compression_level: JPEG-XL compression level (1-9) / JPEG-XL压缩级别(1-9)
+        num_workers: Number of parallel workers / 并行worker数量
+        use_mask: Apply fisheye mask to visual images / 对视觉图像应用鱼眼遮罩
+        use_inpaint_tag: Inpaint ArUco markers in visual images / 在视觉图像中修复ArUco标记
+        use_tactile_img: Include tactile images in output / 在输出中包含触觉图像
+        use_tactile_pc: Include tactile point clouds in output / 在输出中包含触觉点云
+        tag_scale: Scale factor for ArUco inpainting (default 1.1) / ArUco修复的缩放因子(默认1.1)
+        use_ee_pose: Transform Quest poses to end-effector poses / 将Quest姿态转换为末端执行器姿态
+        tx_quest_2_ee_left_path: Left hand Quest→EE transformation matrix / 左手Quest→EE变换矩阵
+        tx_quest_2_ee_right_path: Right hand Quest→EE transformation matrix / 右手Quest→EE变换矩阵
+        fps_num_points: Number of points in FPS-sampled tactile point clouds / FPS采样的触觉点云中的点数
+        fisheye_mask_params: Fisheye mask parameters (radius, center, fill_color) / 鱼眼遮罩参数
+    
+    Process / 处理过程:
+    1. Load dataset plans from all input paths / 从所有输入路径加载数据集计划
+    2. Create zarr replay buffer structure / 创建zarr replay buffer结构
+    3. Add pose and gripper data for each episode / 为每个episode添加姿态和抓手数据
+    4. Process images in parallel / 并行处理图像:
+       - Load images from folders / 从文件夹加载图像
+       - Apply optional inpainting/masking / 应用可选的修复/遮罩
+       - Resize and compress / 调整大小和压缩
+       - Store in zarr arrays / 存储到zarr数组
+    5. Save compressed zarr.zip / 保存压缩的zarr.zip
+    
+    Output structure / 输出结构:
+        robot{N}_eef_pos: (T, 3) End-effector positions / 末端执行器位置
+        robot{N}_eef_rot_axis_angle: (T, 3) Rotations in axis-angle / 轴角旋转
+        robot{N}_gripper_width: (T, 1) Gripper widths / 抓手宽度
+        camera{N}_rgb: (T, H, W, 3) Visual RGB images / 视觉RGB图像
+        camera{N}_{left|right}_tactile: (T, H, W, 3) Tactile images / 触觉图像
+        camera{N}_{left|right}_tactile_points: (T, P, 3) Point clouds / 点云
+    """
+    # Check if output exists and handle overwrite / 检查输出是否存在并处理覆盖
     if os.path.isfile(output_path):
         if sys.stdin.isatty():
             if click.confirm(f'Output file {output_path} exists! Overwrite?', abort=True):
@@ -59,6 +139,7 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
     visual_out_res = tuple(int(x) for x in visual_out_res)
     tactile_out_res = tuple(int(x) for x in tactile_out_res)
 
+    # Disable OpenCV threading for parallel processing / 禁用OpenCV线程以进行并行处理
     cv2.setNumThreads(1)
             
     out_replay_buffer = ReplayBuffer.create_empty_zarr(
@@ -344,38 +425,76 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
 
     def video_to_zarr(replay_buffer, mp4_path, tasks, tag_scale, fisheye_mask_params=None, use_tactile_img=True, use_tactile_pc=True, fps_num_points=256):
         """
-        Image-folder-only version: mp4_path is a directory containing JPG frames.
+        Process image folder and write frames to zarr replay buffer.
+        处理图像文件夹并将帧写入zarr replay buffer
+        
+        This function handles the core image processing pipeline:
+        该函数处理核心图像处理管道:
+        
+        Args:
+            replay_buffer: Zarr replay buffer to write to / 要写入的Zarr replay buffer
+            mp4_path: Path to image folder (not actually MP4) / 图像文件夹路径(实际上不是MP4)
+            tasks: List of task dictionaries with frame ranges / 带帧范围的任务字典列表
+            tag_scale: ArUco tag scale for inpainting / ArUco标记修复的缩放
+            fisheye_mask_params: Fisheye mask parameters / 鱼眼遮罩参数
+            use_tactile_img: Process tactile images / 处理触觉图像
+            use_tactile_pc: Process tactile point clouds / 处理触觉点云
+            fps_num_points: Number of FPS-sampled points / FPS采样点数
+        
+        Process / 处理过程:
+        1. Load images in correct order from CSV timestamps / 从CSV时间戳按正确顺序加载图像
+        2. For each frame / 对于每帧:
+           a. Load image from file / 从文件加载图像
+           b. For visual images / 对于视觉图像:
+              - Inpaint ArUco markers (if enabled) / 修复ArUco标记(如果启用)
+              - Apply fisheye mask (if enabled) / 应用鱼眼遮罩(如果启用)
+           c. Resize to target resolution / 调整到目标分辨率
+           d. Write to zarr array / 写入zarr数组
+           e. If tactile: also process point cloud / 如果触觉:也处理点云
+        
+        Note / 注意:
+            Despite the name "video_to_zarr", this function processes image folders,
+            not video files. The name is historical from previous pipeline versions.
+            尽管函数名为"video_to_zarr",该函数处理的是图像文件夹而非视频文件
+            这个名字是历史遗留的旧版管道命名
         """
         mp4_path = str(mp4_path)
         video_path = pathlib.Path(mp4_path)
         # video_path is like: demos/demo_xxx/left_hand_visual_img
         # demo_dir should be: demos/demo_xxx (where CSV files are located)
+        # video_path格式如:demos/demo_xxx/left_hand_visual_img
+        # demo_dir应该是:demos/demo_xxx(CSV文件所在位置)
         demo_dir = video_path.parent
         
         usage_name = tasks[0]['usage_name']
         
         # Determine which hand this camera belongs to for CSV lookup
+        # 确定该相机属于哪只手以查找CSV
         # For tactile: usage_name format is like "left_hand_left_tactile" or "left_hand_right_tactile"
         # For visual: usage_name format is like "left_visual" or "right_hand_visual"
+        # 对于触觉:usage_name格式如"left_hand_left_tactile"或"left_hand_right_tactile"
+        # 对于视觉:usage_name格式如"left_visual"或"right_hand_visual"
         if usage_name.startswith('left_hand') or (usage_name.startswith('left_') and 'visual' in usage_name):
             hand = 'left'
         elif usage_name.startswith('right_hand') or (usage_name.startswith('right_') and 'visual' in usage_name):
             hand = 'right'
-        elif 'left' in usage_name.split('_')[:2]:  # Check first two parts for "left"
+        elif 'left' in usage_name.split('_')[:2]:  # Check first two parts for "left" / 检查前两部分是否有"left"
             hand = 'left'
-        elif 'right' in usage_name.split('_')[:2]:  # Check first two parts for "right"
+        elif 'right' in usage_name.split('_')[:2]:  # Check first two parts for "right" / 检查前两部分是否有"right"
             hand = 'right'
         else:
-            # Fallback: try to get from task
+            # Fallback: try to get from task / 后备方案:尝试从task获取
             hand = tasks[0].get('position', 'left')
         
         # Load image files in the order specified by CSV timestamps file
+        # 按CSV时间戳文件指定的顺序加载图像文件
         csv_file = demo_dir / f'{hand}_hand_timestamps.csv'
         img_files = []
         csv_has_filename = False
         
         if csv_file.exists():
             # Read CSV to get the correct order of image files
+            # 读取CSV以获取图像文件的正确顺序
             with csv_file.open("r", newline="") as f:
                 reader = csv.DictReader(f)
                 fieldnames = reader.fieldnames or []
@@ -383,6 +502,7 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
                 
                 if csv_has_filename:
                     # Use filename from CSV to maintain correct order
+                    # 使用CSV中的文件名保持正确顺序
                     for row in reader:
                         filename = row.get("filename", "")
                         if filename:
@@ -391,6 +511,7 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
                                 img_files.append(img_path)
                             else:
                                 # Try without path if filename already includes path info
+                                # 如果文件名已包含路径信息则尝试不带路径
                                 img_path_alt = Path(mp4_path) / Path(filename).name
                                 if img_path_alt.exists():
                                     img_files.append(img_path_alt)

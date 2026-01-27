@@ -684,17 +684,40 @@ python run_data_collection_pipeline.py  # Task 2
 
 ### Cleaning Intermediate Files
 
-To save disk space after processing:
-```bash
-# Remove intermediate files but keep final dataset
-cd data/<task_name>/demos
-for demo in demo_*/; do
-    rm -rf "${demo}*/cropped_img"
-    rm -rf "${demo}pose_data"
-done
+Use the provided `clean_processed_data.py` script to safely remove intermediate and result files:
 
-# The zarr.zip and dataset_plan.pkl are preserved
+```bash
+# Preview what will be deleted (safe, no actual deletion)
+python clean_processed_data.py --data-dir data/_0118_bi_pick_and_place --dry-run
+
+# Actually delete files (asks for confirmation)
+python clean_processed_data.py --data-dir data/_0118_bi_pick_and_place
+
+# Use config file to auto-detect data directory
+python clean_processed_data.py --config config/VB_task_config.yaml
+
+# Skip confirmation prompt
+python clean_processed_data.py --data-dir data/_0118_bi_pick_and_place --yes
 ```
+
+**What gets removed**:
+- `dataset_plan.pkl` (dataset metadata)
+- `*.zarr.zip` (final compressed dataset)
+- `demos/*/cropped_img/` (cropped images)
+- `demos/*/pose_data/` (pose trajectories)
+- `demos/*/gripper_width_*.csv` (gripper measurements)
+
+**What gets preserved** (raw data):
+- `demos/*/all_trajectory/` (Quest pose JSONs)
+- `demos/*/left_hand_img/` & `right_hand_img/` (raw images)
+- `demos/*/metadata.json` (demo information)
+
+This is useful for:
+- **Reprocessing with different parameters**: Clean old results before running pipeline again
+- **Disk space**: Free ~50-150 MB per dataset
+- **Archiving**: Keep only raw data for long-term storage
+
+See `CLEANING_GUIDE.md` for detailed documentation.
 
 ## Quick Reference
 
@@ -706,6 +729,10 @@ python test_standalone.py                    # Validate installation
 
 # Run full pipeline
 python run_data_collection_pipeline.py       # Process all steps
+
+# Clean processed files
+python clean_processed_data.py --config config/VB_task_config.yaml --dry-run  # Preview
+python clean_processed_data.py --config config/VB_task_config.yaml --yes      # Execute
 
 # Run individual steps
 cd vitamin_b_data_collection_pipeline
