@@ -1,6 +1,10 @@
 # ViTaMIn-B Data Collection Pipeline (Standalone)
 
-This is a **standalone, self-contained** version of the ViTaMIn-B bimanual manipulation data collection and processing pipeline. It has no external dependencies on other directories or packages outside this folder.
+This is a **standalone, self-contained** version of the ViTaMIn-B manipulation data collection and processing pipeline. It has no external dependencies on other directories or packages outside this folder.
+
+**Supported Task Types:**
+- **Bimanual**: Two-handed manipulation with dual grippers and Quest controllers
+- **Mono-Manual (Single-Hand)**: Single-handed manipulation with one gripper and Quest controller
 
 
 ## Prerequisites
@@ -47,19 +51,27 @@ You should see:
 
 Place your raw demonstration data in the following structure:
 
+#### Bimanual Mode (Two Hands)
 ```
 data_collection/data/<task_name>/demos/
-├── demo_bimanual_<timestamp_1>/
-│   ├── left_hand/
-│   │   ├── <timestamp>_left_hand_visual.mp4
-│   │   ├── <timestamp>_left_hand_left_tactile.mp4
-│   │   └── <timestamp>_left_hand_right_tactile.mp4
-│   ├── right_hand/
-│   │   ├── <timestamp>_right_hand_visual.mp4
-│   │   ├── <timestamp>_right_hand_left_tactile.mp4
-│   │   └── <timestamp>_right_hand_right_tactile.mp4
-│   └── quest_data.pkl
-├── demo_bimanual_<timestamp_2>/
+├── demo_<name>_<timestamp_1>/
+│   ├── left_hand_img/          # Left hand camera images (JPEG sequence)
+│   ├── right_hand_img/         # Right hand camera images (JPEG sequence)
+│   └── all_trajectory/
+│       └── quest_poses_<timestamp>.json
+├── demo_<name>_<timestamp_2>/
+│   └── ...
+└── ...
+```
+
+#### Mono-Manual Mode (Single Hand)
+```
+data_collection/data/<task_name>/demos/
+├── demo_<name>_<timestamp_1>/
+│   ├── left_hand_img/          # OR right_hand_img/ (depending on single_hand_side config)
+│   └── all_trajectory/
+│       └── quest_poses_<timestamp>.json
+├── demo_<name>_<timestamp_2>/
 │   └── ...
 └── ...
 ```
@@ -71,10 +83,34 @@ ln -s /path/to/your/existing/data ./data
 
 ### Step 4: Configure the Pipeline
 
-Edit `config/VB_task_config.yaml` and set:
-- `task.name`: Your task name (e.g., `_0118_bi_pick_and_place`)
-- `task.type`: `bimanual` or `single`
-- Other parameters as needed (see Configuration section below)
+Edit `config/VB_task_config.yaml` based on your task type:
+
+#### For Bimanual Tasks
+```yaml
+task:
+  name: "_0118_bi_pick_and_place"
+  type: bimanual  # Two-handed mode
+
+recorder:
+  camera_paths:
+    left_hand: "/dev/video0"
+    right_hand: "/dev/video2"
+```
+
+#### For Mono-Manual Tasks
+```yaml
+task:
+  name: "_0118_mono_pick"
+  type: single          # Single-handed mode
+  single_hand_side: left  # or "right"
+
+recorder:
+  camera_paths:
+    left_hand: "/dev/video0"   # Used if single_hand_side: left
+    right_hand: "/dev/video2"  # Used if single_hand_side: right
+```
+
+See the Configuration section below for more details.
 
 ### Step 5: Run the Pipeline
 
@@ -88,55 +124,90 @@ That's it! The pipeline will process all steps automatically.
 
 The pipeline expects raw demonstration data organized as follows:
 
-### For Bimanual Tasks
+### Data Collection with 00_get_data.py
+
+The pipeline includes a data recording script `vitamin_b_data_collection_pipeline/00_get_data.py` that captures synchronized camera images and Quest controller poses in real-time.
+
+**Recording Process:**
+1. Configure your task type (`bimanual` or `single`) and cameras in `config/VB_task_config.yaml`
+2. Run `python vitamin_b_data_collection_pipeline/00_get_data.py --cfg config/VB_task_config.yaml`
+3. The script automatically:
+   - Records from configured cameras (1 for single-hand, 2 for bimanual)
+   - Captures Quest controller poses
+   - Saves data in the correct folder structure
+
+**Output Structure:**
+
+#### For Bimanual Tasks
 ```
 data/
 └── <task_name>/                          # e.g., _0118_bi_pick_and_place
     └── demos/
-        ├── demo_bimanual_<timestamp_1>/  # e.g., demo_bimanual_2026.01.19_14.02.13.407220
-        │   ├── left_hand/
-        │   │   ├── <timestamp>_left_hand_visual.mp4
-        │   │   ├── <timestamp>_left_hand_left_tactile.mp4
-        │   │   └── <timestamp>_left_hand_right_tactile.mp4
-        │   ├── right_hand/
-        │   │   ├── <timestamp>_right_hand_visual.mp4
-        │   │   ├── <timestamp>_right_hand_left_tactile.mp4
-        │   │   └── <timestamp>_right_hand_right_tactile.mp4
-        │   └── quest_data.pkl                # VR controller pose data
-        ├── demo_bimanual_<timestamp_2>/
+        ├── demo_<timestamp_1>/
+        │   ├── left_hand_img/            # Left camera JPEG sequence
+        │   │   ├── frame_000000.jpg
+        │   │   ├── frame_000001.jpg
+        │   │   └── ...
+        │   ├── right_hand_img/           # Right camera JPEG sequence
+        │   │   ├── frame_000000.jpg
+        │   │   └── ...
+        │   └── all_trajectory/
+        │       └── quest_poses_<timestamp>.json  # VR controller poses
+        ├── demo_<timestamp_2>/
         │   └── ...
         └── ...
 ```
 
-### For Single-Hand Tasks
+#### For Mono-Manual (Single-Hand) Tasks
 ```
 data/
 └── <task_name>/
     └── demos/
         └── demo_<timestamp>/
-            ├── <hand>_hand/              # "left" or "right"
-            │   ├── <timestamp>_<hand>_hand_visual.mp4
-            │   ├── <timestamp>_<hand>_hand_left_tactile.mp4
-            │   └── <timestamp>_<hand>_hand_right_tactile.mp4
-            └── quest_data.pkl
+            ├── left_hand_img/            # OR right_hand_img/ (based on config)
+            │   ├── frame_000000.jpg
+            │   ├── frame_000001.jpg
+            │   └── ...
+            └── all_trajectory/
+                └── quest_poses_<timestamp>.json
 ```
 
-### Video Format Requirements
-- **Format**: MP4
-- **Resolution**: 1280×800 (or as configured)
-- **Frame rate**: 30 fps (typical)
-- **Content**: 
-  - `visual`: Wide-angle view from wrist camera
-  - `left_tactile`: Left GelSight tactile sensor
-  - `right_tactile`: Right GelSight tactile sensor
+**Image Format:**
+- **Format**: JPEG (`.jpg`)
+- **Resolution**: 3840×800 (raw, before cropping) or as configured
+- **Frame naming**: Sequential `frame_XXXXXX.jpg`
+- **Content**: Raw fisheye camera view containing visual + tactile views (split in step 01)
 
-### Quest Data Format
-The `quest_data.pkl` file contains:
-- VR controller poses (position + rotation)
-- Timestamps
-- Gripper state (optional)
+**Quest Pose Data Format (`quest_poses_*.json`):**
+```json
+{
+  "timestamp_1": {
+    "left_controller": [x, y, z, qx, qy, qz, qw],
+    "right_controller": [x, y, z, qx, qy, qz, qw],
+    "left_gripper_width": 0.05,
+    "right_gripper_width": 0.05
+  },
+  "timestamp_2": { ... }
+}
+```
 
-This data is recorded during teleoperation using Meta Quest 3 controllers.
+### Pipeline Processing Modes
+
+The pipeline automatically adapts to your task type:
+
+**Bimanual Mode (`task.type: bimanual`)**:
+- Processes **both** `left_hand_img/` and `right_hand_img/` folders
+- Detects ArUco markers on **both grippers**
+- Calculates width for **both grippers**
+- Generates zarr with **robot0** and **robot1** arrays
+
+**Mono-Manual Mode (`task.type: single`)**:
+- Processes **only** the specified hand's image folder (set by `task.single_hand_side`)
+- Detects ArUco markers on **one gripper**
+- Calculates width for **one gripper**
+- Generates zarr with **robot0 arrays only**
+
+The mode is detected automatically in steps 07 and 08 by checking which image folders exist in each demo.
 
 ## Usage Guide
 
@@ -168,9 +239,8 @@ python run_data_collection_pipeline.py
    Running step: 01_crop_img.py
    ==================================================
    ```
-   - Extracts frames from MP4 videos
-   - Applies fisheye correction
-   - Crops to tactile sensor region
+   - Splits 3840×800 raw images into visual (center) and tactile (left/right) views
+   - Processes images for configured hands (both for bimanual, one for mono-manual)
    - Progress: Shows tasks completed (e.g., "10/10 tasks")
 
    **Step 2: ArUco Detection** (`04_get_aruco_pos.py`)
@@ -179,8 +249,9 @@ python run_data_collection_pipeline.py
    Running step: 04_get_aruco_pos.py
    ==================================================
    ```
-   - Detects ArUco markers for pose estimation
-   - Creates pose_data folders with CSV files
+   - Detects ArUco markers on gripper(s) for pose estimation
+   - Processes configured hands (both for bimanual, one for mono-manual)
+   - Creates `tag_detection_*.pkl` files
    - Shows detection success rate
 
    **Step 3: Gripper Width Calculation** (`05_get_width.py`)
@@ -189,9 +260,10 @@ python run_data_collection_pipeline.py
    Running step: 05_get_width.py
    ==================================================
    ```
-   - Calculates gripper opening width from markers
-   - Validates measurements
-   - Reports detection rates
+   - Calculates gripper opening width from marker pairs
+   - Processes configured hands (both for bimanual, one for mono-manual)
+   - Creates `gripper_width_*.csv` files
+   - Reports detection rates and interpolation results
 
    **Step 4: Dataset Plan Generation** (`07_generate_dataset_plan.py`)
    ```
@@ -199,9 +271,10 @@ python run_data_collection_pipeline.py
    Running step: 07_generate_dataset_plan.py
    ==================================================
    ```
-   - Loads and validates episodes
-   - Applies coordinate transformations
-   - Creates `dataset_plan.pkl`
+   - **Automatically detects** demo mode (single-hand or bimanual) for each demo
+   - Synchronizes images, Quest poses, and gripper widths with timestamps
+   - Applies coordinate transformations (Unity left-handed → right-handed)
+   - Creates `dataset_plan.pkl` with all synchronized data
 
    **Step 5: Replay Buffer Creation** (`08_generate_replay_buffer.py`)
    ```
@@ -211,7 +284,8 @@ python run_data_collection_pipeline.py
    ```
    - Processes all frames in parallel
    - Resizes images to target resolution
-   - Compresses into zarr format
+   - **Adapts zarr structure** based on number of grippers detected
+   - Compresses into zarr format with JPEG-XL
    - Creates final `<task_name>.zarr.zip`
 
 3. **Completion Message**:
@@ -308,16 +382,45 @@ recorder:
   output: "./data"            # Where to find/save data
 ```
 
+### Camera Configuration
+```yaml
+recorder:
+  camera_paths:
+    left_hand: "/dev/video0"    # Left hand camera device
+    right_hand: "/dev/video2"   # Right hand camera device
+  camera:
+    format: "MJPG"
+    width: 3840
+    height: 800
+    fps: 30
+  output: "./data"              # Where to find/save data
+```
+
+**Note**: For single-hand mode (`task.type: single`), only the camera specified by `task.single_hand_side` will be used.
+
 ### ArUco Detection
 ```yaml
 calculate_width:
   cam_intrinsic_json_path: "../assets/intri_result/gopro_intrinsics_2_7k.json"
   aruco_dict:
-    predefined: DICT_4X4_50   # ArUco dictionary type
-  marker_size_map:            # Physical marker sizes in meters
+    predefined: DICT_4X4_50     # ArUco dictionary type
+  marker_size_map:              # Physical marker sizes in meters
     0: 0.02
     1: 0.02
     # ...
+  
+  # Marker IDs for left gripper fingers
+  left_hand_aruco_id:
+    left_id: 0
+    right_id: 1
+  
+  # Marker IDs for right gripper fingers
+  right_hand_aruco_id:
+    left_id: 2
+    right_id: 3
+```
+
+**Note**: For single-hand mode, only the marker IDs for the active hand (left or right) are used.
 ```
 
 ### Output Settings
@@ -345,6 +448,8 @@ output_train_data:
   tx_quest_2_ee_right_path: '../assets/tf_cali_result/quest_2_ee_right_hand.npy'
 ```
 
+**Note**: For single-hand mode, only the transformation for the active hand is used.
+
 **Important**: All paths in the config should be relative to the `data_collection` directory or use absolute paths.
 
 ## Pipeline Output
@@ -363,17 +468,32 @@ The main output is a compressed zarr archive ready for training:
 
 The zarr archive contains the following arrays:
 
-#### Robot Data (per robot)
-- `robot0_eef_pos` / `robot1_eef_pos`: End-effector position [N, 3]
+#### For Bimanual Tasks
+
+**Robot Data (two robots):**
+- `robot0_eef_pos`, `robot1_eef_pos`: End-effector position [N, 3]
   - Format: (x, y, z) in meters
-- `robot0_eef_rot_axis_angle` / `robot1_eef_rot_axis_angle`: Rotation [N, 3]
+- `robot0_eef_rot_axis_angle`, `robot1_eef_rot_axis_angle`: Rotation [N, 3]
   - Format: Axis-angle representation
-- `robot0_gripper_width` / `robot1_gripper_width`: Gripper opening [N, 1]
+- `robot0_gripper_width`, `robot1_gripper_width`: Gripper opening [N, 1]
   - Format: Width in meters
-- `robot0_demo_start_pose` / `robot1_demo_start_pose`: Initial pose [N, 6]
+- `robot0_demo_start_pose`, `robot1_demo_start_pose`: Initial pose [N, 6]
   - Format: (x, y, z, rx, ry, rz)
-- `robot0_demo_end_pose` / `robot1_demo_end_pose`: Target pose [N, 6]
+- `robot0_demo_end_pose`, `robot1_demo_end_pose`: Target pose [N, 6]
   - Format: (x, y, z, rx, ry, rz)
+
+#### For Mono-Manual (Single-Hand) Tasks
+
+**Robot Data (one robot only):**
+- `robot0_eef_pos`: End-effector position [N, 3]
+- `robot0_eef_rot_axis_angle`: Rotation [N, 3]
+- `robot0_gripper_width`: Gripper opening [N, 1]
+- `robot0_demo_start_pose`: Initial pose [N, 6]
+- `robot0_demo_end_pose`: Target pose [N, 6]
+
+**Note**: No `robot1_*` arrays are created for single-hand tasks.
+
+#### Camera Data (both modes)
 
 #### Camera Data
 - `camera0_rgb` / `camera1_rgb`: Visual images [N, H, W, 3]
@@ -571,6 +691,99 @@ python run_data_collection_pipeline.py
 - Verify `zarr==2.16.0` and `numcodecs==0.11.0` are installed
 - Check disk space (need ~2x the output size free)
 - Try reducing `compression_level` (e.g., 90 instead of 99)
+
+#### 9. Wrong Number of Cameras/Grippers Detected
+**Error**: `AssertionError: n_cameras != expected` or missing gripper data
+
+**Solutions**:
+- **Check task.type in config**: Must match your data (bimanual vs single)
+- **For bimanual**: Ensure both `left_hand_img/` and `right_hand_img/` exist
+- **For single**: Ensure only the specified hand's folder exists
+- **Mixed datasets**: If processing mixed data, ensure each demo has consistent structure
+- Verify `task.single_hand_side` is set correctly for single-hand mode
+
+#### 10. ArUco Markers Not Detected in Single-Hand Mode
+**Error**: Low detection rate or no markers found
+
+**Solutions**:
+- Verify `task.single_hand_side` matches your recorded hand (left or right)
+- Check that the correct ArUco IDs are configured:
+  - If `single_hand_side: left`, use `left_hand_aruco_id` values
+  - If `single_hand_side: right`, use `right_hand_aruco_id` values
+- Ensure marker IDs in config match physical markers on your gripper
+
+## Switching Between Bimanual and Mono-Manual Modes
+
+The pipeline fully supports both bimanual (two-handed) and mono-manual (single-handed) data recording and processing. Here's how to switch between modes:
+
+### 1. Update Configuration
+
+**For Bimanual Mode:**
+```yaml
+task:
+  type: bimanual
+
+recorder:
+  camera_paths:
+    left_hand: "/dev/video0"
+    right_hand: "/dev/video2"
+```
+
+**For Mono-Manual Mode:**
+```yaml
+task:
+  type: single
+  single_hand_side: left  # or "right"
+
+recorder:
+  camera_paths:
+    left_hand: "/dev/video0"   # Used if single_hand_side: left
+    right_hand: "/dev/video2"  # Used if single_hand_side: right
+```
+
+### 2. Ensure Correct Data Structure
+
+**Bimanual demos must have:**
+- `left_hand_img/` folder
+- `right_hand_img/` folder
+- `all_trajectory/` with Quest poses for both controllers
+
+**Mono-manual demos must have:**
+- **Either** `left_hand_img/` **OR** `right_hand_img/` (based on `single_hand_side`)
+- `all_trajectory/` with Quest poses for the active controller
+
+### 3. Recording New Data
+
+When using `00_get_data.py` to record demonstrations:
+- **Bimanual mode**: Records from **both cameras** simultaneously
+- **Mono-manual mode**: Records from **one camera only** (specified by `single_hand_side`)
+
+The script automatically adapts based on `task.type` in your config.
+
+### 4. Processing Existing Data
+
+The pipeline automatically detects the mode for each demo:
+- Steps 01-03 (crop, ArUco, width) process only the hands that have data
+- Steps 07-08 (dataset plan, replay buffer) **auto-detect** the mode by checking which image folders exist
+
+**You can even mix bimanual and mono-manual demos in the same dataset!** The pipeline will process each demo according to its structure.
+
+### 5. Verify ArUco Configuration
+
+Make sure your ArUco marker IDs match your hardware:
+
+```yaml
+calculate_width:
+  # For left gripper (used when single_hand_side: left OR in bimanual mode)
+  left_hand_aruco_id:
+    left_id: 0
+    right_id: 1
+  
+  # For right gripper (used when single_hand_side: right OR in bimanual mode)
+  right_hand_aruco_id:
+    left_id: 2
+    right_id: 3
+```
 
 ### Getting Help
 
