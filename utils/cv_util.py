@@ -6,6 +6,76 @@ import math
 import cv2
 import scipy.interpolate as si
 
+# =================== Image Format Utilities ===================
+
+def load_image_bgr(image_path: str) -> np.ndarray:
+    """
+    Load image in BGR format (OpenCV default).
+    以BGR格式加载图像(OpenCV默认)
+    
+    Args:
+        image_path: Path to image file / 图像文件路径
+        
+    Returns:
+        Image in BGR format or None if failed / BGR格式的图像，失败则返回None
+    """
+    return cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+
+
+def ensure_rgb(img: np.ndarray, source_format: str = 'bgr') -> np.ndarray:
+    """
+    Ensure image is in RGB format.
+    确保图像为RGB格式
+    
+    Args:
+        img: Input image / 输入图像
+        source_format: Source color format ('bgr', 'rgb', or 'gray') / 源颜色格式
+        
+    Returns:
+        Image in RGB format / RGB格式的图像
+    """
+    if img is None:
+        raise ValueError("Input image is None")
+    
+    source_format = source_format.lower()
+    
+    if source_format == 'rgb':
+        return img
+    elif source_format == 'bgr':
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    elif source_format == 'gray' or len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    else:
+        raise ValueError(f"Unknown source format: {source_format}")
+
+
+def ensure_bgr(img: np.ndarray, source_format: str = 'rgb') -> np.ndarray:
+    """
+    Ensure image is in BGR format (for OpenCV operations).
+    确保图像为BGR格式(用于OpenCV操作)
+    
+    Args:
+        img: Input image / 输入图像
+        source_format: Source color format ('bgr', 'rgb', or 'gray') / 源颜色格式
+        
+    Returns:
+        Image in BGR format / BGR格式的图像
+    """
+    if img is None:
+        raise ValueError("Input image is None")
+    
+    source_format = source_format.lower()
+    
+    if source_format == 'bgr':
+        return img
+    elif source_format == 'rgb':
+        return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    elif source_format == 'gray' or len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    else:
+        raise ValueError(f"Unknown source format: {source_format}")
+
+
 # =================== intrinsics ===================
 
 def parse_fisheye_intrinsics(json_data: dict) -> Dict[str, np.ndarray]:
@@ -164,13 +234,6 @@ def detect_localize_aruco_tags(
         fisheye_intr_dict: Dict[str, np.ndarray],
         refine_subpix: bool = True,
         # --- Exposed ArUco detector parameters (with sensible defaults) ---
-        # adaptiveThreshWinSizeMin: int = 3,
-        # adaptiveThreshWinSizeMax: int = 23,
-        # adaptiveThreshWinSizeStep: int = 10,
-        # adaptiveThreshConstant: float = 8.0,
-        # minMarkerPerimeterRate: float = 0.03,
-        # maxMarkerPerimeterRate: float = 4.0,
-        # polygonalApproxAccuracyRate: float = 0.03):
         adaptiveThreshWinSizeMin: int = 3,
         adaptiveThreshWinSizeMax: int = 23,
         adaptiveThreshWinSizeStep: int = 10,
@@ -178,6 +241,38 @@ def detect_localize_aruco_tags(
         minMarkerPerimeterRate: float = 0.03,
         maxMarkerPerimeterRate: float = 4.0,
         polygonalApproxAccuracyRate: float = 0.03):
+    """
+    Detect and localize ArUco markers in an image.
+    检测并定位图像中的ArUco标记
+    
+    This function accepts images in any format (BGR, RGB, or grayscale).
+    OpenCV's ArUco detector internally converts color images to grayscale,
+    so there's no accuracy difference between formats.
+    该函数接受任何格式的图像(BGR、RGB或灰度)。
+    OpenCV的ArUco检测器内部会将彩色图像转换为灰度图，
+    因此不同格式之间的精度没有差异。
+    
+    Args:
+        img: Input image (BGR, RGB, or grayscale) / 输入图像(BGR、RGB或灰度)
+        aruco_dict: ArUco dictionary / ArUco字典
+        marker_size_map: Map of marker IDs to physical sizes (meters) / 标记ID到物理尺寸的映射(米)
+        fisheye_intr_dict: Fisheye camera intrinsics / 鱼眼相机内参
+        refine_subpix: Enable subpixel corner refinement / 启用亚像素角点精化
+        
+    Returns:
+        Dictionary mapping detected marker IDs to their pose and corners
+        检测到的标记ID到其姿态和角点的字典映射
+        {marker_id: {'rvec': ..., 'tvec': ..., 'corners': ...}}
+    """
+    # Validate input image format
+    # 验证输入图像格式
+    if img is None:
+        raise ValueError("Input image is None")
+    if len(img.shape) not in [2, 3]:
+        raise ValueError(f"Expected 2D (grayscale) or 3D (color) image, got shape {img.shape}")
+    if len(img.shape) == 3 and img.shape[2] not in [3, 4]:
+        raise ValueError(f"Expected 3 or 4 channels for color image, got {img.shape[2]}")
+    
     K = fisheye_intr_dict['K']
     D = fisheye_intr_dict['D']
 

@@ -18,6 +18,11 @@ into a compressed zarr archive ready for model training. It:
 The output format is compatible with diffusion_policy and other training
 frameworks that use zarr replay buffers.
 输出格式与diffusion_policy和其他使用zarr replay buffer的训练框架兼容
+
+Image Format Pipeline / 图像格式管道:
+- Input: JPG files loaded as BGR (OpenCV default) / 输入: JPG文件以BGR加载(OpenCV默认)
+- Processing: ArUco inpainting and masking done in RGB / 处理: ArUco修复和遮罩在RGB中完成
+- Output: RGB format in zarr (ML frameworks expect RGB) / 输出: zarr中的RGB格式(ML框架期望RGB)
 """
 import sys
 import os
@@ -25,6 +30,11 @@ import argparse
 from pathlib import Path
 import re
 import csv
+
+# Configuration Constants / 配置常量
+INPUT_IMAGE_FORMAT = 'BGR'   # OpenCV loads images as BGR / OpenCV以BGR加载图像
+OUTPUT_IMAGE_FORMAT = 'RGB'  # ML frameworks expect RGB / ML框架期望RGB
+PROCESSING_FORMAT = 'RGB'    # Processing (inpainting, masking) done in RGB / 处理(修复、遮罩)在RGB中完成
 
 # Get project root (VB-vla/) / 获取项目根目录
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -52,6 +62,43 @@ from utils.pose_util import mat_to_pose, pose_to_mat
 from utils.replay_buffer import ReplayBuffer
 from utils.imagecodecs_numcodecs import register_codecs, JpegXl
 register_codecs()
+
+
+def validate_and_convert_image_format(img: np.ndarray, 
+                                      source_format: str = INPUT_IMAGE_FORMAT,
+                                      target_format: str = PROCESSING_FORMAT) -> np.ndarray:
+    """
+    Validate and convert image to target format.
+    验证并转换图像到目标格式
+    
+    Args:
+        img: Input image / 输入图像
+        source_format: Expected source format ('BGR', 'RGB') / 预期源格式
+        target_format: Target format ('BGR', 'RGB') / 目标格式
+        
+    Returns:
+        Image in target format / 目标格式的图像
+        
+    Raises:
+        ValueError: If image is invalid / 如果图像无效
+    """
+    if img is None:
+        raise ValueError("Image is None")
+    
+    if len(img.shape) != 3 or img.shape[2] != 3:
+        raise ValueError(f"Expected 3-channel color image, got shape {img.shape}")
+    
+    # No conversion needed if formats match
+    if source_format == target_format:
+        return img
+    
+    # Convert between BGR and RGB
+    if source_format == 'BGR' and target_format == 'RGB':
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    elif source_format == 'RGB' and target_format == 'BGR':
+        return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    else:
+        raise ValueError(f"Unsupported conversion: {source_format} -> {target_format}")
 
 
 def load_tactile_points(demo_dir, usage_name, total_frames):
@@ -431,6 +478,21 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
         This function handles the core image processing pipeline:
         该函数处理核心图像处理管道:
         
+        Image Format Flow / 图像格式流程:
+        1. Load JPG files as BGR (cv2.imread default) / 以BGR加载JPG文件(cv2.imread默认)
+        2. Convert BGR → RGB for processing / 转换BGR→RGB用于处理
+        3. Apply inpainting/masking in RGB space / 在RGB空间应用修复/遮罩
+        4. Resize and store as RGB in zarr / 调整大小并以RGB存储到zarr
+        
+        Note: RGB is used for final output because:
+        - Most ML frameworks (PyTorch, TensorFlow) expect RGB
+        - Consistent with common dataset formats (ImageNet, etc.)
+        - Inpainting/masking operations work in any color space
+        注意: 使用RGB作为最终输出因为:
+        - 大多数ML框架(PyTorch, TensorFlow)期望RGB
+        - 与常见数据集格式一致(ImageNet等)
+        - 修复/遮罩操作在任何颜色空间都可工作
+        
         Args:
             replay_buffer: Zarr replay buffer to write to / 要写入的Zarr replay buffer
             mp4_path: Path to image folder (not actually MP4) / 图像文件夹路径(实际上不是MP4)
@@ -444,13 +506,14 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
         Process / 处理过程:
         1. Load images in correct order from CSV timestamps / 从CSV时间戳按正确顺序加载图像
         2. For each frame / 对于每帧:
-           a. Load image from file / 从文件加载图像
-           b. For visual images / 对于视觉图像:
+           a. Load image from file (BGR format) / 从文件加载图像(BGR格式)
+           b. Convert to RGB for processing / 转换为RGB用于处理
+           c. For visual images / 对于视觉图像:
               - Inpaint ArUco markers (if enabled) / 修复ArUco标记(如果启用)
               - Apply fisheye mask (if enabled) / 应用鱼眼遮罩(如果启用)
-           c. Resize to target resolution / 调整到目标分辨率
-           d. Write to zarr array / 写入zarr数组
-           e. If tactile: also process point cloud / 如果触觉:也处理点云
+           d. Resize to target resolution / 调整到目标分辨率
+           e. Write to zarr array (RGB format) / 写入zarr数组(RGB格式)
+           f. If tactile: also process point cloud / 如果触觉:也处理点云
         
         Note / 注意:
             Despite the name "video_to_zarr", this function processes image folders,
@@ -651,10 +714,23 @@ def main(input_path: str, output_path: str, visual_out_res: Union[tuple, list], 
                     if frame_idx == tasks[curr_task_idx]['frame_start']:
                         buffer_idx = tasks[curr_task_idx]['buffer_start']
                     
+                    # Load and convert image with validation
+                    # 加载并验证转换图像
                     img_bgr = cv2.imread(str(img_path))
                     if img_bgr is None:
                         continue
-                    img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                    
+                    try:
+                        # Convert to RGB for processing and output
+                        # 转换为RGB用于处理和输出
+                        img = validate_and_convert_image_format(
+                            img_bgr, 
+                            source_format=INPUT_IMAGE_FORMAT,
+                            target_format=PROCESSING_FORMAT
+                        )
+                    except ValueError as e:
+                        print(f"      [WARN] Frame {frame_idx} validation failed: {e}")
+                        continue
 
                     if 'visual' in usage_name:
                         if use_inpaint_tag:

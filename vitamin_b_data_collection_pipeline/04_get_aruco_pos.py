@@ -17,6 +17,12 @@ Process flow / 处理流程:
 Output / 输出:
 - tag_detection_{hand}.pkl: Contains frame-by-frame detection results
   包含逐帧检测结果
+  
+Image Format Notes / 图像格式说明:
+- OpenCV loads images in BGR format by default / OpenCV默认以BGR格式加载图像
+- ArUco detection works with BGR, RGB, or grayscale / ArUco检测支持BGR、RGB或灰度图
+- ArUco internally converts to grayscale for detection / ArUco内部转换为灰度进行检测
+- We use BGR directly to avoid unnecessary conversion / 直接使用BGR避免不必要的转换
 """
 import sys
 import os
@@ -32,6 +38,10 @@ import re
 import cv2
 import pandas as pd
 from datetime import datetime
+
+# Configuration Constants / 配置常量
+DEFAULT_OPENCV_FORMAT = 'BGR'  # OpenCV's default color format / OpenCV默认颜色格式
+ARUCO_ACCEPTS_ANY_FORMAT = True  # ArUco works with BGR/RGB/Gray / ArUco支持BGR/RGB/灰度
 
 # Project path setup / 项目路径设置
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -197,14 +207,22 @@ def process_video_detection(task, num_workers):
         
         # Process each image / 处理每张图像
         for i, img_file in enumerate(img_files):
+            # Load image in BGR format (OpenCV default)
+            # BGR格式加载图像(OpenCV默认)
             img_bgr = cv2.imread(str(img_file))
             if img_bgr is None:
                 continue
-            img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            
+            # Note: ArUco detection accepts BGR, RGB, or grayscale
+            # It internally converts to grayscale for marker detection
+            # We keep it in BGR to avoid unnecessary conversion overhead
+            # 注意: ArUco检测接受BGR、RGB或灰度图像
+            # 内部会转换为灰度图进行标记检测
+            # 保持BGR格式以避免不必要的转换开销
             
             # Detect and localize ArUco tags / 检测和定位ArUco标记
             tag_dict = detect_localize_aruco_tags(
-                img=img,
+                img=img_bgr,  # Pass BGR directly (ArUco converts internally)
                 aruco_dict=aruco_dict,
                 marker_size_map=marker_size_map,
                 fisheye_intr_dict=fisheye_intr,
