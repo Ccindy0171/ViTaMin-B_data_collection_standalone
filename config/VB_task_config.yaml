@@ -1,6 +1,6 @@
 task:
   type: bimanual # single or bimanual
-  name: _0118_bi_pick_and_place
+  name: _test_viz_128_copy
   copy_raw_data: True
   single_hand_side: left  # left or right (only used when type is 'single')
 
