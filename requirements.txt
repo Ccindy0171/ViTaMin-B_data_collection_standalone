@@ -1,42 +1,31 @@
-# Core dependencies for ViTaMIn-B Data Collection Pipeline
-# Python 3.10+ recommended
-
-# Data processing and numerical computation
+# Core dependencies
 numpy>=1.24.4
 scipy>=1.11.4
 pandas>=2.1.0
 scikit-image>=0.24.0
 
-# Computer vision
+# Image processing
 opencv-python>=4.7.0
 imagecodecs>=2023.9.18
+pillow>=11.0.0
 
 # Video processing
 av>=14.4.0
 
-# Configuration management
+# Configuration
 omegaconf
 hydra-core>=1.2.0
 pyyaml>=6.0.2
 
-# Data storage and compression
+# Data format - IMPORTANT: Must use these exact versions
 zarr==2.16.0
-numcodecs==0.11.0
+numcodecs==0.12.1
 
-# Pose and transformation utilities
+# Transforms
 transforms3d
 pyquaternion>=0.9.9
 
-# Serial communication (for robot control)
+# Utilities
 pyserial>=3.5
-
-# Note: v4l2 is only required for live data collection (00_get_data.py)
-# For post-processing pipeline (steps 1-5), v4l2 is not needed
-# If you need live data collection, install v4l2 manually or use system package
-
-# CLI and progress bars
 click>=8.1.8
 tqdm>=4.65.0
-
-# Utilities
-pillow>=11.0.0
