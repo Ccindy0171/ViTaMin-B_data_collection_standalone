@@ -31,7 +31,7 @@ from multiprocessing import Pool, cpu_count
 
 # Project path setup / 项目路径设置
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parents[1]
+PROJECT_ROOT = SCRIPT_DIR.parents[0]
 DATA_DIR = PROJECT_ROOT / "data"
 sys.path.append(str(PROJECT_ROOT))
 
