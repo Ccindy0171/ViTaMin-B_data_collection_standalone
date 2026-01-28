@@ -28,8 +28,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 from omegaconf import OmegaConf
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent[0]
+SCRIPT_DIR = Path(__file__).resolve().parents
+PROJECT_ROOT = SCRIPT_DIR.parents[0]
 DATA_DIR = PROJECT_ROOT / "data"
 sys.path.insert(0, str(PROJECT_ROOT))
 
